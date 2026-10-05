@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Booth Settings</title>
+<link rel="stylesheet" href="settings-style.css" />
+</head>
+<body>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="camera">Camera</button>
+  <button class="tab-btn" data-tab="countdown">Countdown</button>
+  <button class="tab-btn" data-tab="print">Print & Layout</button>
+  <button class="tab-btn" data-tab="template">Template</button>
+  <button class="tab-btn" data-tab="printer">Printer</button>
+  <button class="tab-btn" data-tab="sharing">Sharing</button>
+  <button class="tab-btn" data-tab="presets">Presets</button>
+  <button class="tab-btn" data-tab="events">Events</button>
+  <button class="tab-btn" data-tab="diagnostics">Diagnostics</button>
+  <button class="tab-btn" data-tab="license">License</button>
+</div>
+
+<div class="tab-content">
+
+  <section id="tab-camera" class="pane active">
+    <h2>Camera Setup</h2>
+    <div class="fields" style="margin-bottom:20px;">
+      <label>Camera Source
+        <select id="cam-source">
+          <option value="webcam">Webcam (USB / built-in)</option>
+          <option value="dslr">DSLR (tethered via folder watch)</option>
+        </select>
+      </label>
+      <div id="dslr-fields" class="hidden">
+        <p class="hint">
+          For a Sony camera (e.g. A6000), use <strong>digiCamControl</strong> (free, Windows) to tether the camera over USB.
+          Configure it to auto-save each capture into the folder below. This app will pick up new photos automatically.
+        </p>
+        <label>Watch / Output Folder
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="dslr-folder" readonly style="flex:1;" />
+            <button id="btn-choose-dslr-folder" class="btn">Choose...</button>
+          </div>
+        </label>
+        <label>CameraControlRemoteCmd.exe
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="dslr-remote-cmd" readonly style="flex:1;" placeholder="C:\Program Files (x86)\digiCamControl\CameraControlRemoteCmd.exe" />
+            <button id="btn-choose-dslr-remote-cmd" class="btn">Choose...</button>
+          </div>
+        </label>
+        <p id="dslr-bundled-status" class="hint"></p>
+        <p class="hint">digiCamControl itself must be running (it launches automatically in the background and minimizes itself) with the camera connected for the Take Photo button to trigger the shutter.</p>
+      </div>
+    </div>
+    <div id="webcam-fields" class="row">
+      <video id="cam-preview" autoplay playsinline muted></video>
+      <div class="fields">
+        <label>Camera
+          <select id="cam-device"></select>
+        </label>
+        <label>Resolution
+          <select id="cam-resolution">
+            <option value="640x480">640 x 480</option>
+            <option value="1280x720" selected>1280 x 720</option>
+            <option value="1920x1080">1920 x 1080</option>
+          </select>
+        </label>
+        <label>Brightness <span id="v-brightness">0</span>
+          <input type="range" id="cam-brightness" min="-100" max="100" value="0" />
+        </label>
+        <label>Contrast <span id="v-contrast">0</span>
+          <input type="range" id="cam-contrast" min="-100" max="100" value="0" />
+        </label>
+        <label>Saturation <span id="v-saturation">0</span>
+          <input type="range" id="cam-saturation" min="-100" max="100" value="0" />
+        </label>
+        <p class="hint">Exposure / white balance / focus are applied only if your camera and OS driver expose them.</p>
+        <label>Exposure Compensation
+          <input type="range" id="cam-exposure" min="-3" max="3" step="0.1" value="0" />
+        </label>
+        <label>White Balance
+          <select id="cam-wb">
+            <option value="">Auto (default)</option>
+            <option value="manual">Manual</option>
+            <option value="continuous">Continuous</option>
+          </select>
+        </label>
+        <label>Focus Mode
+          <select id="cam-focus">
+            <option value="">Auto (default)</option>
+            <option value="manual">Manual</option>
+            <option value="continuous">Continuous</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-countdown" class="pane">
+    <h2>Photo Countdown</h2>
+    <div class="radio-group" id="countdown-group">
+      <label><input type="radio" name="countdown" value="3" /> 3 seconds</label>
+      <label><input type="radio" name="countdown" value="5" /> 5 seconds</label>
+      <label><input type="radio" name="countdown" value="10" /> 10 seconds</label>
+    </div>
+  </section>
+
+  <section id="tab-print" class="pane">
+    <h2>Print Size & Layout</h2>
+    <div class="row">
+      <div class="fields">
+        <label>Paper Size
+          <select id="paper-type">
+            <option value="4x6">4 x 6 in</option>
+            <option value="2x9">2 x 9 in (strip)</option>
+            <option value="a4">A4</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+        <div id="custom-paper-fields" class="hidden">
+          <label>Width (mm) <input type="number" id="paper-width-mm" /></label>
+          <label>Height (mm) <input type="number" id="paper-height-mm" /></label>
+        </div>
+        <label>Orientation
+          <select id="paper-orientation">
+            <option value="portrait">Portrait</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </label>
+        <hr />
+        <p class="hint">Drag the blue box on the preview to position the photo. Drag its corner to resize.</p>
+        <label>Photo Width (mm) <input type="number" id="layout-w" /></label>
+        <label>Photo Height (mm) <input type="number" id="layout-h" /></label>
+        <label>Photo X (mm) <input type="number" id="layout-x" /></label>
+        <label>Photo Y (mm) <input type="number" id="layout-y" /></label>
+        <label>Margin (mm) <input type="number" id="layout-margin" /></label>
+      </div>
+      <canvas id="layout-preview"></canvas>
+    </div>
+  </section>
+
+  <section id="tab-template" class="pane">
+    <h2>Template</h2>
+    <div class="row">
+      <div class="fields">
+        <button id="btn-choose-template" class="btn">Upload Template Image...</button>
+        <p id="template-path" class="hint"></p>
+        <label>Opacity <span id="v-opacity">100</span>
+          <input type="range" id="template-opacity" min="0" max="100" value="100" />
+        </label>
+        <label>Fit Mode
+          <select id="template-fit">
+            <option value="contain">Contain</option>
+            <option value="cover">Cover</option>
+            <option value="stretch">Stretch</option>
+          </select>
+        </label>
+        <label>Layer Order
+          <select id="template-layer">
+            <option value="front">Template in front of photo (overlay/frame)</option>
+            <option value="back">Template behind photo (background)</option>
+          </select>
+        </label>
+      </div>
+      <canvas id="template-preview"></canvas>
+    </div>
+  </section>
+
+  <section id="tab-printer" class="pane">
+    <h2>Printer</h2>
+    <div class="fields">
+      <label>Printer
+        <select id="printer-select"><option value="">System Default</option></select>
+      </label>
+      <label>Default Copies <input type="number" id="printer-default-copies" min="1" /></label>
+      <label>Max Copies <input type="number" id="printer-max-copies" min="1" /></label>
+      <label style="flex-direction:row; align-items:center; gap:8px;">
+        <input type="checkbox" id="printer-borderless" style="width:auto;" /> Borderless printing (no margin)
+      </label>
+      <p class="hint">Only enable this if your printer/paper combination actually supports true borderless printing. On some printers (e.g. certain Epson photo printers with custom paper sizes), forcing this can cause the printer to fill the uncovered area with black instead of leaving it blank. If prints come out wrong, turn this off first.</p>
+    </div>
+  </section>
+
+  <section id="tab-sharing" class="pane">
+    <h2>WiFi Photo Sharing</h2>
+    <div class="fields">
+      <label style="flex-direction:row; align-items:center; gap:8px;">
+        <input type="checkbox" id="sharing-enabled" style="width:auto;" /> Enable WiFi sharing
+      </label>
+      <label>Server Port <input type="number" id="sharing-port" /></label>
+      <label>Link Expiry (minutes) <input type="number" id="sharing-expiry" /></label>
+      <p id="sharing-status" class="hint"></p>
+      <p class="hint">Guests scan a QR code after their photo to download it over your venue's WiFi or the laptop's own hotspot — no internet or app install required.</p>
+    </div>
+  </section>
+
+  <section id="tab-presets" class="pane">
+    <h2>Booth Presets</h2>
+    <div class="fields">
+      <label>Preset Name <input type="text" id="preset-name" placeholder="e.g. Wonderla 2026" /></label>
+      <button id="btn-save-preset" class="btn">Save Current Settings as Preset</button>
+    </div>
+    <ul id="preset-list" class="preset-list"></ul>
+  </section>
+
+  <section id="tab-events" class="pane">
+    <h2>Event Mode</h2>
+    <p class="hint">An event bundles a preset (template, layout, printer, camera) under a name. Starting an event loads that preset and switches the booth into Operator Mode &mdash; a simplified screen with settings hidden.</p>
+    <div class="fields">
+      <label>Event Name <input type="text" id="event-name" placeholder="e.g. Wonderla 2026" /></label>
+      <label>Date <input type="date" id="event-date" /></label>
+      <label>Client <input type="text" id="event-client" placeholder="e.g. Wonderla Amusement Park" /></label>
+      <label>Preset to use
+        <select id="event-preset"></select>
+      </label>
+      <button id="btn-save-event" class="btn">Save Event</button>
+    </div>
+    <ul id="event-list" class="preset-list"></ul>
+    <div id="active-event-banner" class="hint" style="margin-top:16px;"></div>
+  </section>
+
+  <section id="tab-diagnostics" class="pane">
+    <h2>Diagnostics</h2>
+    <div class="fields">
+      <div id="system-info" class="hint"></div>
+      <div id="startup-time" class="hint"></div>
+      <button id="btn-open-logs" class="btn">Open Log Folder</button>
+      <p class="hint">Logs never contain license keys, passwords, or tokens. Share the log folder with support if something goes wrong.</p>
+    </div>
+  </section>
+
+  <section id="tab-license" class="pane">
+    <h2>License</h2>
+    <div class="fields">
+      <div id="license-info" class="hint">Loading...</div>
+    </div>
+  </section>
+
+</div>
+
+<div class="footer-bar">
+  <span id="save-indicator"></span>
+  <button id="btn-reset" class="btn secondary">Reset to Defaults</button>
+</div>
+
+<script src="compositor.js"></script>
+<script src="settings-renderer.js"></script>
+</body>
+</html>

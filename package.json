@@ -1,0 +1,71 @@
+{
+  "name": "webcam-snap",
+  "version": "1.0.0",
+  "description": "Simple webcam capture app",
+  "author": "Reddy",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.reddy.webcamsnap",
+    "productName": "WebcamSnap",
+    "files": [
+      "main.js",
+      "preload.js",
+      "config-store.js",
+      "compositor.js",
+      "logger.js",
+      "print-queue.js",
+      "dslr-watcher.js",
+      "dslr-trigger.js",
+      "share-server.js",
+      "license.js",
+      "index.html",
+      "settings.html",
+      "activation.html",
+      "renderer.js",
+      "settings-renderer.js",
+      "activation-renderer.js",
+      "style.css",
+      "settings-style.css",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/digicamcontrol",
+        "to": "digicamcontrol",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "target": "dmg",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "This app needs access to your camera to take photos."
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}

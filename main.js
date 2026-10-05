@@ -1,0 +1,539 @@
+const { app, BrowserWindow, ipcMain, dialog, session, shell, Menu } = require('electron');
+const path = require('path');
+const fs = require('fs');
+const { execFile, exec } = require('child_process');
+const { loadConfig, saveConfig, defaultConfig, BUILTIN_PAPERS } = require('./config-store');
+const logger = require('./logger');
+const printQueue = require('./print-queue');
+const dslrWatcher = require('./dslr-watcher');
+const dslrTrigger = require('./dslr-trigger');
+const shareServer = require('./share-server');
+const license = require('./license');
+
+let mainWindow;
+let settingsWindow;
+let activationWindow;
+const startupTimer = { appReady: null, windowShown: null };
+
+process.on('uncaughtException', (err) => {
+  logger.error('uncaughtException', { error: String(err), stack: err.stack });
+});
+process.on('unhandledRejection', (reason) => {
+  logger.error('unhandledRejection', { reason: String(reason) });
+});
+
+// Remove the default File/Edit/View/Window/Help menu bar app-wide —
+// this is a commercial kiosk-style app, not a developer tool, and that
+// bar had no useful items in it anyway.
+Menu.setApplicationMenu(null);
+
+function createMainWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1000,
+    height: 760,
+    show: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  mainWindow.loadFile('index.html');
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    startupTimer.windowShown = Date.now();
+    logger.info('startup complete', { ms: startupTimer.windowShown - startupTimer.appReady });
+  });
+
+  printQueue.on('update', (jobs) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('print-queue:update', jobs);
+    }
+  });
+}
+
+function createSettingsWindow() {
+  if (settingsWindow) { settingsWindow.focus(); return; }
+  settingsWindow = new BrowserWindow({
+    width: 1000,
+    height: 740,
+    parent: mainWindow,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  settingsWindow.loadFile('settings.html');
+  settingsWindow.on('closed', () => { settingsWindow = null; });
+}
+
+function createActivationWindow() {
+  activationWindow = new BrowserWindow({
+    width: 480,
+    height: 560,
+    resizable: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  activationWindow.loadFile('activation.html');
+}
+
+// ---------- digiCamControl bundling + lifecycle management ----------
+// Bundled so end clients never install anything separately (see
+// vendor/digicamcontrol/ and package.json's extraResources).
+function getBundledDigiCamDir() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'digicamcontrol')
+    : path.join(__dirname, 'vendor', 'digicamcontrol');
+}
+
+function resolveDigiCamPaths() {
+  const bundledDir = getBundledDigiCamDir();
+  const bundledRemoteCmd = path.join(bundledDir, 'CameraControlRemoteCmd.exe');
+  const bundledMainExe = path.join(bundledDir, 'CameraControl.exe');
+  const hasBundled = fs.existsSync(bundledRemoteCmd);
+  return { bundledDir, bundledRemoteCmd, bundledMainExe, hasBundled };
+}
+
+let digiCamControlProcess = null;
+
+// Checks Windows' own process list so we never spawn a second instance —
+// doing so previously caused orphaned processes to pile up across app
+// restarts, which slowed everything down and left zombies in Task Manager.
+function isDigiCamControlAlreadyRunning() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') { resolve(false); return; }
+    exec('tasklist /FI "IMAGENAME eq CameraControl.exe" /FO CSV /NH', (err, stdout) => {
+      if (err) { resolve(false); return; }
+      resolve(stdout && stdout.toLowerCase().includes('cameracontrol.exe'));
+    });
+  });
+}
+
+// Best-effort: minimize digiCamControl's window shortly after launch so
+// it never visually distracts an operator or client. This is cosmetic
+// only — if it fails for any reason, the app still functions normally.
+function minimizeDigiCamControlWindowSoon() {
+  if (process.platform !== 'win32') return;
+  setTimeout(() => {
+    const psScript =
+      '$sig=\'[DllImport("user32.dll")]public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);\';' +
+      'Add-Type -MemberDefinition $sig -Name Win32 -Namespace Native;' +
+      'Get-Process CameraControl -ErrorAction SilentlyContinue | ForEach-Object { [Native.Win32]::ShowWindowAsync($_.MainWindowHandle, 2) }';
+    execFile('powershell.exe', ['-WindowStyle', 'Hidden', '-NoProfile', '-Command', psScript], { windowsHide: true }, (err) => {
+      if (err) logger.warn('could not minimize digiCamControl window', { error: String(err) });
+    });
+  }, 2500); // give the app time to actually open its window first
+}
+
+async function ensureDigiCamControlRunning() {
+  const { bundledMainExe, hasBundled } = resolveDigiCamPaths();
+  if (!hasBundled) return;
+  if (digiCamControlProcess && !digiCamControlProcess.killed) return; // we already launched it this session
+
+  const alreadyRunning = await isDigiCamControlAlreadyRunning();
+  if (alreadyRunning) {
+    logger.info('digiCamControl already running, not launching another instance');
+    return;
+  }
+
+  try {
+    const { spawn } = require('child_process');
+    digiCamControlProcess = spawn(bundledMainExe, [], { detached: false, stdio: 'ignore' });
+    digiCamControlProcess.on('error', (err) => {
+      logger.error('digiCamControl process error', { error: String(err) });
+    });
+    logger.info('bundled digiCamControl launched', { bundledMainExe, pid: digiCamControlProcess.pid });
+    minimizeDigiCamControlWindowSoon();
+  } catch (e) {
+    logger.error('failed to launch bundled digiCamControl', { error: String(e) });
+  }
+}
+
+function killDigiCamControlIfOwned() {
+  if (digiCamControlProcess && !digiCamControlProcess.killed) {
+    try {
+      digiCamControlProcess.kill();
+      logger.info('digiCamControl process terminated on app quit');
+    } catch (e) {
+      logger.warn('could not terminate digiCamControl process', { error: String(e) });
+    }
+  }
+}
+
+async function startBackgroundServices(config) {
+  if (config.camera.source === 'dslr') {
+    await ensureDigiCamControlRunning();
+  }
+  if (config.camera.source === 'dslr' && config.dslr.watchFolder) {
+    const result = dslrWatcher.start(config.dslr.watchFolder, (filePath) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('dslr:photo-captured', filePath);
+      }
+    });
+    if (!result.started) logger.warn('dslr watcher did not start', { error: result.error });
+  }
+  if (config.sharing.enabled) {
+    await shareServer.start(config.sharing.port);
+  }
+}
+
+app.whenReady().then(async () => {
+  startupTimer.appReady = Date.now();
+  logger.init(app.getPath('userData'));
+  logger.info('app ready', { ms_since_process_start: Math.round(process.uptime() * 1000) });
+
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(permission === 'media');
+  });
+
+  const licenseCheckStart = Date.now();
+  const licenseStatus = await license.getStatus();
+  logger.info('license check complete', { ms: Date.now() - licenseCheckStart });
+
+  if (!licenseStatus.activated || !licenseStatus.valid) {
+    createActivationWindow();
+    return;
+  }
+
+  createMainWindow();
+  const config = loadConfig();
+  startBackgroundServices(config);
+});
+
+app.on('window-all-closed', () => {
+  dslrWatcher.stop();
+  shareServer.stop();
+  killDigiCamControlIfOwned();
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  killDigiCamControlIfOwned();
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+});
+
+// ---------- Licensing ----------
+ipcMain.handle('license:activate', async (event, { licenseKey, email }) => {
+  const result = await license.activate({ licenseKey, email });
+  if (result.success) {
+    if (activationWindow) { activationWindow.close(); activationWindow = null; }
+    createMainWindow();
+    const config = loadConfig();
+    startBackgroundServices(config);
+  }
+  return result;
+});
+
+ipcMain.handle('license:status', () => license.getStatus());
+ipcMain.handle('license:deviceId', () => license.getDeviceId());
+
+// ---------- Settings window ----------
+ipcMain.handle('open-settings', () => createSettingsWindow());
+
+// ---------- Config ----------
+ipcMain.handle('config:get', () => loadConfig());
+
+ipcMain.handle('config:set', (event, partialConfig) => {
+  const current = loadConfig();
+  let merged = {
+    ...current,
+    ...partialConfig,
+    camera: { ...current.camera, ...(partialConfig.camera || {}) },
+    dslr: { ...current.dslr, ...(partialConfig.dslr || {}) },
+    sharing: { ...current.sharing, ...(partialConfig.sharing || {}) },
+    paper: { ...current.paper, ...(partialConfig.paper || {}) },
+    layout: { ...current.layout, ...(partialConfig.layout || {}) },
+    template: { ...current.template, ...(partialConfig.template || {}) },
+    printer: { ...current.printer, ...(partialConfig.printer || {}) }
+  };
+
+  if (partialConfig.camera && 'source' in partialConfig.camera) {
+    // Auto-default the watch folder so switching to DSLR mode "just works"
+    // without requiring a manual folder pick first.
+    if (merged.camera.source === 'dslr' && !merged.dslr.watchFolder) {
+      merged.dslr.watchFolder = path.join(app.getPath('pictures'), 'PhotoBooth', 'DSLR-Captures');
+    }
+    saveConfig(merged);
+    dslrWatcher.stop();
+    if (merged.camera.source === 'dslr') {
+      ensureDigiCamControlRunning();
+      if (merged.dslr.watchFolder) {
+        dslrWatcher.start(merged.dslr.watchFolder, (filePath) => {
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('dslr:photo-captured', filePath);
+        });
+      }
+    }
+  } else {
+    saveConfig(merged);
+  }
+
+  if (partialConfig.dslr && merged.camera.source === 'dslr') {
+    dslrWatcher.stop();
+    dslrWatcher.start(merged.dslr.watchFolder, (filePath) => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('dslr:photo-captured', filePath);
+    });
+  }
+  if (partialConfig.sharing && 'enabled' in partialConfig.sharing) {
+    if (merged.sharing.enabled) shareServer.start(merged.sharing.port);
+    else shareServer.stop();
+  }
+
+  if (mainWindow) mainWindow.webContents.send('config:updated', merged);
+  return merged;
+});
+
+ipcMain.handle('config:papers', () => BUILTIN_PAPERS);
+
+ipcMain.handle('config:reset', () => {
+  const def = defaultConfig();
+  saveConfig(def);
+  if (mainWindow) mainWindow.webContents.send('config:updated', def);
+  return def;
+});
+
+// ---------- DSLR active shutter trigger ----------
+ipcMain.handle('dslr:trigger-capture', async () => {
+  const config = loadConfig();
+  await ensureDigiCamControlRunning();
+  const { bundledRemoteCmd, hasBundled } = resolveDigiCamPaths();
+  const remoteCmdPath = config.dslr.remoteCmdPath || (hasBundled ? bundledRemoteCmd : '');
+  const result = await dslrTrigger.triggerCapture({ remoteCmdPath, outputFolder: config.dslr.watchFolder });
+  if (result.success) dslrWatcher.markSeen(path.basename(result.filePath));
+  return result;
+});
+
+ipcMain.handle('dslr:bundled-status', () => {
+  const { hasBundled, bundledRemoteCmd } = resolveDigiCamPaths();
+  return { hasBundled, bundledRemoteCmd: hasBundled ? bundledRemoteCmd : null };
+});
+
+ipcMain.handle('dslr:choose-remote-cmd', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(settingsWindow || mainWindow, {
+    title: 'Choose CameraControlRemoteCmd.exe',
+    filters: [{ name: 'Executable', extensions: ['exe'] }],
+    properties: ['openFile']
+  });
+  if (canceled || !filePaths.length) return null;
+  return filePaths[0];
+});
+
+ipcMain.handle('dslr:choose-folder', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(settingsWindow || mainWindow, {
+    title: 'Choose DSLR Capture Folder',
+    properties: ['openDirectory', 'createDirectory']
+  });
+  if (canceled || !filePaths.length) return null;
+  return filePaths[0];
+});
+
+// ---------- Presets ----------
+ipcMain.handle('presets:save', (event, name) => {
+  const current = loadConfig();
+  const snapshot = { ...current };
+  delete snapshot.presets;
+  delete snapshot.activePreset;
+  current.presets[name] = snapshot;
+  current.activePreset = name;
+  saveConfig(current);
+  return current;
+});
+
+ipcMain.handle('presets:load', (event, name) => {
+  const current = loadConfig();
+  const preset = current.presets[name];
+  if (!preset) return current;
+  const merged = { ...current, ...preset, activePreset: name };
+  saveConfig(merged);
+  if (mainWindow) mainWindow.webContents.send('config:updated', merged);
+  return merged;
+});
+
+ipcMain.handle('presets:delete', (event, name) => {
+  const current = loadConfig();
+  delete current.presets[name];
+  if (current.activePreset === name) current.activePreset = '';
+  saveConfig(current);
+  return current;
+});
+
+// ---------- Events ----------
+ipcMain.handle('events:save', (event, { name, date, client, presetName }) => {
+  const current = loadConfig();
+  current.events[name] = { date, client, presetName };
+  saveConfig(current);
+  return current;
+});
+
+ipcMain.handle('events:delete', (event, name) => {
+  const current = loadConfig();
+  delete current.events[name];
+  if (current.activeEvent === name) current.activeEvent = '';
+  saveConfig(current);
+  return current;
+});
+
+ipcMain.handle('events:start', (event, name) => {
+  const current = loadConfig();
+  const evt = current.events[name];
+  if (!evt) return current;
+  let merged = { ...current, activeEvent: name, operatorMode: true };
+  if (evt.presetName && current.presets[evt.presetName]) {
+    merged = { ...merged, ...current.presets[evt.presetName], activeEvent: name, operatorMode: true, events: current.events };
+  }
+  saveConfig(merged);
+  logger.info('event started', { name, preset: evt.presetName });
+  if (mainWindow) mainWindow.webContents.send('config:updated', merged);
+  if (settingsWindow) settingsWindow.close();
+  return merged;
+});
+
+ipcMain.handle('events:end', () => {
+  const current = loadConfig();
+  const merged = { ...current, activeEvent: '', operatorMode: false };
+  saveConfig(merged);
+  logger.info('event ended');
+  if (mainWindow) mainWindow.webContents.send('config:updated', merged);
+  return merged;
+});
+
+// ---------- Startup timing ----------
+ipcMain.handle('diagnostics:startup-time', () => {
+  if (!startupTimer.appReady || !startupTimer.windowShown) return null;
+  return startupTimer.windowShown - startupTimer.appReady;
+});
+
+// ---------- Template upload ----------
+ipcMain.handle('template:choose', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(settingsWindow || mainWindow, {
+    title: 'Choose Template Image',
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }],
+    properties: ['openFile']
+  });
+  if (canceled || !filePaths.length) return null;
+
+  const destDir = path.join(app.getPath('userData'), 'templates');
+  fs.mkdirSync(destDir, { recursive: true });
+  const destPath = path.join(destDir, path.basename(filePaths[0]));
+  fs.copyFileSync(filePaths[0], destPath);
+  return destPath;
+});
+
+ipcMain.handle('template:read', (event, filePath) => {
+  try {
+    const data = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).slice(1) || 'png';
+    return `data:image/${ext};base64,${data.toString('base64')}`;
+  } catch (e) {
+    return null;
+  }
+});
+
+// ---------- Printers ----------
+ipcMain.handle('printers:list', async () => {
+  if (!mainWindow) return [];
+  const printers = await mainWindow.webContents.getPrintersAsync();
+  return printers.map(p => ({ name: p.name, displayName: p.displayName, isDefault: p.isDefault }));
+});
+
+// ---------- Photo storage ----------
+function photosDir() {
+  const dir = path.join(app.getPath('pictures'), 'PhotoBooth');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function timestampedFilename(ext) {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+  const rand = Math.floor(Math.random() * 900 + 100);
+  return `${stamp}_${rand}.${ext}`;
+}
+
+ipcMain.handle('photo:save-original', (event, dataUrl) => {
+  try {
+    const dir = photosDir();
+    const filename = timestampedFilename('jpg');
+    const filePath = path.join(dir, filename);
+    const base64 = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    const tmpPath = filePath + '.tmp';
+    fs.writeFileSync(tmpPath, base64, 'base64');
+    fs.renameSync(tmpPath, filePath);
+    logger.info('original photo saved', { filePath });
+    return { saved: true, path: filePath };
+  } catch (e) {
+    logger.error('failed to save original photo', { error: String(e) });
+    return { saved: false, error: String(e) };
+  }
+});
+
+ipcMain.handle('save-photo', async (event, dataUrl) => {
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    title: 'Save Photo',
+    defaultPath: path.join(app.getPath('pictures'), `snap-${Date.now()}.png`),
+    filters: [{ name: 'PNG Images', extensions: ['png'] }]
+  });
+  if (canceled || !filePath) return { saved: false };
+  const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+  fs.writeFileSync(filePath, base64Data, 'base64');
+  return { saved: true, path: filePath };
+});
+
+ipcMain.handle('photo:read-as-dataurl', (event, filePath) => {
+  try {
+    const data = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).slice(1).toLowerCase() || 'jpg';
+    const mime = ext === 'png' ? 'png' : 'jpeg';
+    return `data:image/${mime};base64,${data.toString('base64')}`;
+  } catch (e) {
+    logger.error('failed to read dslr photo', { filePath, error: String(e) });
+    return null;
+  }
+});
+
+// ---------- Print queue ----------
+ipcMain.handle('print:enqueue', (event, { dataUrl, widthMM, heightMM, copies, printerName, sourcePhotoPath, borderless }) => {
+  return printQueue.enqueue({ dataUrl, widthMM, heightMM, copies, printerName, sourcePhotoPath, borderless });
+});
+
+ipcMain.handle('print:retry', (event, jobId) => printQueue.retry(jobId));
+ipcMain.handle('print:snapshot', () => printQueue.snapshot());
+
+// ---------- WiFi sharing ----------
+ipcMain.handle('share:photo', async (event, filePath) => {
+  const config = loadConfig();
+  if (!shareServer.server) await shareServer.start(config.sharing.port);
+  return shareServer.share(filePath, config.sharing.expiryMinutes);
+});
+
+ipcMain.handle('share:status', () => ({
+  running: !!shareServer.server,
+  port: shareServer.port,
+  ip: shareServer.getLocalIp()
+}));
+
+// ---------- Diagnostics ----------
+ipcMain.handle('diagnostics:open-log-folder', () => {
+  const dir = logger.getLogDir();
+  if (dir) shell.openPath(dir);
+  return dir;
+});
+
+ipcMain.handle('diagnostics:system-info', () => ({
+  platform: process.platform,
+  arch: process.arch,
+  electronVersion: process.versions.electron,
+  nodeVersion: process.versions.node,
+  appVersion: app.getVersion()
+}));

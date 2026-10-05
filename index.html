@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Photo Booth</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <button id="btn-settings" class="gear-btn" title="Settings">&#9881;</button>
+  <div id="operator-unlock-zone" class="operator-unlock-zone" title=""></div>
+
+  <section id="screen-camera" class="screen active">
+    <video id="video" autoplay playsinline muted></video>
+    <div id="dslr-status" class="dslr-status hidden">DSLR Mode &mdash; ready</div>
+    <button id="btn-take" class="btn primary big">TAKE PHOTO</button>
+  </section>
+
+  <div id="disconnect-overlay" class="overlay hidden">
+    <div class="countdown-label">Camera Disconnected</div>
+    <p class="dim-text">Check the connection and try again.</p>
+    <button id="btn-reconnect" class="btn primary">Reconnect Camera</button>
+  </div>
+
+  <div id="countdown-overlay" class="overlay hidden">
+    <div class="countdown-label" id="countdown-label-text">GET READY!</div>
+    <div id="countdown-number" class="countdown-number">5</div>
+  </div>
+
+  <section id="screen-preview" class="screen">
+    <canvas id="preview-canvas"></canvas>
+    <div class="copies-row">
+      <span class="copies-label">COPIES</span>
+      <button id="btn-minus" class="btn round">-</button>
+      <span id="copies-count">1</span>
+      <button id="btn-plus" class="btn round">+</button>
+    </div>
+    <div class="controls">
+      <button id="btn-cancel" class="btn secondary">CANCEL</button>
+      <button id="btn-share" class="btn secondary">SHARE</button>
+      <button id="btn-print" class="btn primary">PRINT</button>
+    </div>
+  </section>
+
+  <section id="screen-printing" class="screen">
+    <div id="printing-status" class="printing-status">Printing...</div>
+    <div class="controls">
+      <button id="btn-print-retry" class="btn primary hidden">RETRY PRINT</button>
+      <button id="btn-print-done" class="btn secondary hidden">DONE</button>
+    </div>
+  </section>
+
+  <div id="share-modal" class="overlay hidden">
+    <div class="share-card">
+      <h2>Scan to Download</h2>
+      <img id="share-qr" alt="QR code" />
+      <p id="share-url" class="dim-text"></p>
+      <button id="btn-share-close" class="btn secondary">Close</button>
+    </div>
+  </div>
+
+  <div id="error-toast" class="error-toast hidden">
+    <span id="error-toast-text"></span>
+    <button id="error-toast-close">&times;</button>
+  </div>
+
+  <canvas id="capture-canvas" style="display:none;"></canvas>
+
+  <script src="compositor.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

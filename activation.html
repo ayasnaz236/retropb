@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Activate</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+    background: #111827; color: #f3f4f6;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card { width: 380px; padding: 32px; text-align: center; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  p.sub { color: #9ca3af; font-size: 0.9rem; margin-top: 0; margin-bottom: 28px; }
+  label { display: block; text-align: left; font-size: 0.85rem; color: #d1d5db; margin-bottom: 6px; margin-top: 16px; }
+  input {
+    width: 100%; padding: 10px 12px; border-radius: 8px;
+    background: #1f2937; border: 1px solid #374151; color: #f3f4f6; font-size: 0.95rem;
+  }
+  button {
+    margin-top: 24px; width: 100%; padding: 12px; border: none; border-radius: 8px;
+    background: #3b82f6; color: #fff; font-weight: 600; font-size: 1rem; cursor: pointer;
+  }
+  button:hover { background: #2563eb; }
+  button:disabled { background: #374151; cursor: not-allowed; }
+  #error { color: #f87171; font-size: 0.85rem; margin-top: 14px; min-height: 18px; }
+  .device-id { margin-top: 24px; font-size: 0.75rem; color: #6b7280; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Activate Photo Booth</h1>
+    <p class="sub">Enter your license details to get started.</p>
+
+    <label>Email or Phone</label>
+    <input type="text" id="contact" placeholder="you@example.com" />
+
+    <label>License Key</label>
+    <input type="text" id="licenseKey" placeholder="XXXX-XXXX-XXXX-XXXX" />
+
+    <button id="btn-activate">Activate</button>
+    <div id="error"></div>
+    <div class="device-id" id="device-id"></div>
+  </div>
+
+  <script src="activation-renderer.js"></script>
+</body>
+</html>
