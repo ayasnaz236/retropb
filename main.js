@@ -240,6 +240,9 @@ ipcMain.handle('license:deviceId', () => license.getDeviceId());
 
 // ---------- Settings window ----------
 ipcMain.handle('open-settings', () => createSettingsWindow());
+ipcMain.handle('close-settings', () => {
+  if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close();
+});
 
 // ---------- Config ----------
 ipcMain.handle('config:get', () => loadConfig());

@@ -7,13 +7,49 @@
 </head>
 <body>
 
+  <div class="booth-shell">
+    <div class="booth-brand" aria-label="Photo Booth">
+      <span class="brand-kicker">THE</span>
+      <span class="brand-name">PHOTO<br />BOOTH</span>
+      <span class="brand-star">★</span>
+    </div>
+    <div class="booth-sign">SMILE! YOU'RE ON CAMERA</div>
+    <div class="booth-dots" aria-hidden="true"></div>
+    <div class="booth-bulbs" aria-hidden="true"></div>
+    <div class="burst burst-left" aria-hidden="true">✦</div>
+    <div class="burst burst-right" aria-hidden="true">✦</div>
+  </div>
+
   <button id="btn-settings" class="gear-btn" title="Settings">&#9881;</button>
   <div id="operator-unlock-zone" class="operator-unlock-zone" title=""></div>
 
   <section id="screen-camera" class="screen active">
-    <video id="video" autoplay playsinline muted></video>
+    <div class="camera-heading">
+      <div class="heading-ornaments" aria-hidden="true">
+        <svg class="ornament-arrow" viewBox="0 0 92 76" aria-hidden="true"><path d="M16 12 C3 25 5 43 19 47 C34 51 43 35 35 26 C27 18 16 25 16 38 C16 57 42 65 74 58" /><path d="M62 48 L78 58 L66 69" /></svg>
+        <svg class="ornament-crown" viewBox="0 0 74 58" aria-hidden="true"><path d="M8 10 L22 23 L37 4 L51 22 L66 8 L58 47 L16 47 Z" /><path d="M15 39 L59 39" /></svg>
+        <svg class="ornament-smile" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="22" /><circle cx="18" cy="21" r="2" class="face-detail" /><circle cx="34" cy="21" r="2" class="face-detail" /><path d="M16 29 C21 38 32 38 37 29" class="face-detail" /></svg>
+      </div>
+      <h1>Strike a pose</h1>
+      <p>When you're ready, press the big red button.</p>
+    </div>
+    <div class="camera-stage">
+      <aside class="booth-wing film-wing" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+        <b>EST.<br />1964</b>
+      </aside>
+      <div class="camera-frame">
+        <video id="video" autoplay playsinline muted></video>
+        <div class="frame-caption">LIVE PREVIEW <span></span></div>
+      </div>
+      <aside class="booth-wing ticket-wing" aria-hidden="true">
+        <strong>SMILE</strong>
+        <i>★</i>
+        <small>GOOD<br />TIMES</small>
+      </aside>
+    </div>
     <div id="dslr-status" class="dslr-status hidden">DSLR Mode &mdash; ready</div>
-    <button id="btn-take" class="btn primary big">TAKE PHOTO</button>
+    <button id="btn-take" class="btn primary big" aria-label="Take photo" title="Take photo"><svg class="camera-icon" viewBox="0 0 24 20" aria-hidden="true"><path d="M3 5h4l1.5-3h7L17 5h4v13H3Z" /><circle cx="12" cy="11.5" r="4" /></svg></button>
   </section>
 
   <div id="disconnect-overlay" class="overlay hidden">
@@ -28,7 +64,11 @@
   </div>
 
   <section id="screen-preview" class="screen">
-    <canvas id="preview-canvas"></canvas>
+    <div class="preview-heading">
+      <span class="eyebrow">STEP TWO</span>
+      <h1>That’s the one!</h1>
+    </div>
+    <div class="preview-frame"><canvas id="preview-canvas"></canvas></div>
     <div class="copies-row">
       <span class="copies-label">COPIES</span>
       <button id="btn-minus" class="btn round">-</button>
@@ -43,6 +83,7 @@
   </section>
 
   <section id="screen-printing" class="screen">
+    <div class="printing-badge">★</div>
     <div id="printing-status" class="printing-status">Printing...</div>
     <div class="controls">
       <button id="btn-print-retry" class="btn primary hidden">RETRY PRINT</button>

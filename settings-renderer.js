@@ -608,4 +608,6 @@ $('btn-reset').addEventListener('click', async () => {
   location.reload();
 });
 
+$('btn-exit').addEventListener('click', () => window.api.closeSettings());
+
 init();

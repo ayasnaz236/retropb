@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('api', {
   savePhoto: (dataUrl) => ipcRenderer.invoke('save-photo', dataUrl),
 
   openSettings: () => ipcRenderer.invoke('open-settings'),
+  closeSettings: () => ipcRenderer.invoke('close-settings'),
 
   getConfig: () => ipcRenderer.invoke('config:get'),
   setConfig: (partial) => ipcRenderer.invoke('config:set', partial),
